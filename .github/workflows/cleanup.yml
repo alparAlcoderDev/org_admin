@@ -68,8 +68,8 @@ jobs:
               if (!dryRun) {
                 console.log(`Deleting ${r.full_name} (created ${r.created_at})`);
                 await github.rest.repos.delete({ owner: org, repo: r.name });
+                console.log("****** deleted");
               }
-              console.log("******");
             }
             console.log("===============================================");
         env:
