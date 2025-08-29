@@ -1,0 +1,78 @@
+name: Auto-delete test repos
+
+on:
+  # schedule:
+  #   - cron: '0 6 * * *'   # todo dia às 06:00 UTC  ← deixado comentado
+  workflow_dispatch:
+    inputs:
+      include_prefix:
+        description: 'Prefixo dos repositórios a deletar (ex.: -hml)'
+        required: false
+        default: '-hml'
+      cutoff_days:
+        description: 'Apagar apenas se mais velho que N dias'
+        required: false
+        default: '3'
+      keep_list:
+        description: 'Lista de repositórios que NUNCA apaga (separados por vírgula)'
+        required: false
+        default: 'org-admin,.github'
+      dry_run:
+        description: 'Dry-run? (true/false) — true = não deleta de verdade'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: org-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List & delete old test repos
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.SECRET_ADMIN }}  # PAT com delete_repo
+          script: |
+            const org = process.env.ORG_NAME;
+            const cutoffDays = parseInt(process.env.CUTOFF_DAYS || '7', 10);
+            const prefix = process.env.INCLUDE_PREFIX;
+            const keep = process.env.KEEP_LIST.split(',').map(s => s.trim()).filter(Boolean);
+            const dryRun = process.env.DRY_RUN.toLowerCase() === 'true';
+            const cutoff = new Date(Date.now() - cutoffDays*24*60*60*1000);
+
+            const repos = await github.paginate(
+              github.rest.repos.listForOrg,
+              { org, per_page: 100, type: 'all' }
+            );
+
+            console.log("Numero de repos achados: ", repos.length);
+            console.log("Dry-run: ", dryRun);
+            console.log("Keep", keep);
+
+            console.log("===============================================");
+
+            for (const r of repos) {
+              if (r.archived) continue;               // ignora arquivados
+              if (keep.includes(r.name)) continue;    // whitelist
+              if (!r.name.endsWith(prefix)) continue; // pula os que não terminam com o prefix
+
+              const created = new Date(r.created_at);
+              //if (created > cutoff) continue;
+              
+              if (!dryRun) {
+                console.log(`Deleting ${r.full_name} (created ${r.created_at})`);
+                await github.rest.repos.delete({ owner: org, repo: r.name });
+              }
+            }
+            console.log("===============================================");
+        env:
+          ORG_NAME: 'alparAlcoderDev'
+          INCLUDE_PREFIX: ${{ github.event.inputs.include_prefix || '-hml' }}
+          CUTOFF_DAYS: ${{ github.event.inputs.cutoff_days || '7' }}
+          KEEP_LIST: ${{ github.event.inputs.keep_list || 'org-admin,.github' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
