@@ -63,6 +63,7 @@ jobs:
 
               const created = new Date(r.created_at);
               //if (created > cutoff) continue;
+              console.log("Repo: ", r.name);
               
               if (!dryRun) {
                 console.log(`Deleting ${r.full_name} (created ${r.created_at})`);
